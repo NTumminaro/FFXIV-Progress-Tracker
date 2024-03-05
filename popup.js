@@ -1,30 +1,46 @@
 document.addEventListener('DOMContentLoaded', function () {
 	const resetButton = document.getElementById('reset-progress');
+	const progressBarFill = document.getElementById('progress-bar-fill');
 	const progressDisplay = document.getElementById('progress-display');
 
-	function updateProgressDisplay() {
-		chrome.storage.local.get(
-			['totalImages', 'checkedImages'],
-			function (result) {
-				const total = result.totalImages || 0;
-				const checked = result.checkedImages || 0;
-				const percentage = total > 0 ? (checked / total) * 100 : 0;
-				progressDisplay.textContent = `${checked}/${total}`;
-				document.getElementById(
-					'progress-bar-fill'
-				).style.width = `${percentage}%`;
-			}
-		);
-	}
+	resetButton.style.display = 'none';
+	progressBarFill.style.display = 'none';
+	progressDisplay.textContent = 'This extension is not available on this page.';
 
-	updateProgressDisplay();
+	chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+		const currentTab = tabs[0];
+		if (
+			currentTab.url &&
+			currentTab.url.includes('https://ffxiv.consolegameswiki.com/wiki/')
+		) {
+			resetButton.style.display = 'block';
+			progressBarFill.style.display = 'block';
+			progressDisplay.textContent = '0/0 (0%)'; 
 
-	resetButton.addEventListener('click', function () {
-		chrome.storage.local.set({ checkedImages: 0 }, function () {
-			updateProgressDisplay();
-			chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-				chrome.tabs.sendMessage(tabs[0].id, { action: 'resetProgress' });
+			chrome.tabs.sendMessage(currentTab.id, {
+				action: 'requestProgressUpdate',
 			});
-		});
+
+			resetButton.addEventListener('click', function () {
+				chrome.tabs.sendMessage(currentTab.id, { action: 'resetProgress' });
+			});
+
+			chrome.runtime.onMessage.addListener(function (
+				request,
+				sender,
+				sendResponse
+			) {
+				if (request.action === 'updateProgress') {
+					const progressText = `${request.progress.checked}/${
+						request.progress.total
+					} (${request.progress.percentage.toFixed(0)}%)`;
+					progressDisplay.textContent = progressText;
+					progressBarFill.style.width = `${request.progress.percentage}%`;
+				}
+			});
+		} else {
+			progressDisplay.textContent =
+				'This extension is only available on the FFXIV wiki pages.';
+		}
 	});
 });
